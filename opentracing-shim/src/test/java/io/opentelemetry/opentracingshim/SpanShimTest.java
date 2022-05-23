@@ -7,6 +7,7 @@ package io.opentelemetry.opentracingshim;
 
 import static io.opentelemetry.opentracingshim.TestUtils.getBaggageMap;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
@@ -188,6 +189,25 @@ class SpanShimTest {
     EventData eventData = spanData.getEvents().get(0);
     assertThat(eventData.getEpochNanos()).isEqualTo(micros * 1000L);
     verifyAttributes(eventData);
+  }
+
+  @Test
+  void spanWrapper() {
+    SpanShim shim = new SpanShim(telemetryInfo, span);
+    assertThat(SpanBuilderShim.getSpanShim(shim)).isEqualTo(shim);
+    assertThat(SpanBuilderShim.getSpanShim(new SpanWrapper(shim))).isEqualTo(shim);
+    assertThatThrownBy(() -> SpanBuilderShim.getSpanShim(new SpanWrapper("not a span")))
+        .hasMessage("span wrapper didn't return a span: java.lang.String");
+    assertThatThrownBy(() -> SpanBuilderShim.getSpanShim(null))
+        .hasMessage("span is not a valid SpanShim object: null");
+  }
+
+  @Test
+  void getContextShim() {
+    SpanContextShim contextShim = new SpanContextShim(new SpanShim(telemetryInfo, span));
+    assertThat(SpanBuilderShim.getContextShim(contextShim)).isEqualTo(contextShim);
+    assertThatThrownBy(() -> SpanBuilderShim.getContextShim(null))
+        .hasMessage("context is not a valid SpanContextShim object: null");
   }
 
   private static Map<String, Object> createErrorFields() {
