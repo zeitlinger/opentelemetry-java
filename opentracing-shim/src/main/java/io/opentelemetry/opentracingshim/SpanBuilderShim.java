@@ -23,6 +23,7 @@ import io.opentracing.tag.Tags;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
 final class SpanBuilderShim extends BaseShimObject implements SpanBuilder {
@@ -237,9 +238,15 @@ final class SpanBuilderShim extends BaseShimObject implements SpanBuilder {
     return spanShim;
   }
 
-  private static SpanShim getSpanShim(Span span) {
+  static SpanShim getSpanShim(Span span) {
     if (!(span instanceof SpanShim)) {
-      throw new IllegalArgumentException("span is not a valid SpanShim object");
+      if (span instanceof Supplier<?>) {
+        // allow libraries to implement a delegate span,
+        // such as https://github.com/zalando/opentracing-toolbox/tree/main/opentracing-proxy
+        return getSpanShim((Span) ((Supplier<?>) span).get());
+      }
+      throw new IllegalArgumentException("span is not a valid SpanShim object: " +
+          span.getClass().getName());
     }
 
     return (SpanShim) span;
@@ -247,7 +254,8 @@ final class SpanBuilderShim extends BaseShimObject implements SpanBuilder {
 
   private static SpanContextShim getContextShim(SpanContext context) {
     if (!(context instanceof SpanContextShim)) {
-      throw new IllegalArgumentException("context is not a valid SpanContextShim object");
+      throw new IllegalArgumentException("context is not a valid SpanContextShim object: " +
+          context.getClass().getName());
     }
 
     return (SpanContextShim) context;
