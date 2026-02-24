@@ -11,6 +11,7 @@ import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.prometheus.metrics.core.metrics.Counter;
+import io.prometheus.metrics.core.metrics.Gauge;
 import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -115,5 +116,64 @@ class ServiceLoaderIntegrationTest {
                                 .hasPointsSatisfying(point -> point.hasValue(42.0))));
 
     assertThat(counter.get()).isEqualTo(42.0);
+  }
+
+  @Test
+  void transparentGaugeWithLabels() {
+    Gauge gauge =
+        Gauge.builder()
+            .name("current_active_users")
+            .help("Number of users that are currently active")
+            .labelNames("region")
+            .register(registry);
+
+    gauge.labelValues("us-east").inc();
+    gauge.labelValues("us-east").inc();
+    gauge.labelValues("eu-west").set(5.0);
+
+    assertThat(reader.collectAllMetrics())
+        .satisfiesExactly(
+            metric ->
+                assertThat(metric)
+                    .hasName("current_active_users")
+                    .hasDoubleGaugeSatisfying(
+                        g ->
+                            g.hasPointsSatisfying(
+                                point ->
+                                    point
+                                        .hasValue(2.0)
+                                        .hasAttribute(
+                                            AttributeKey.stringKey("region"), "us-east"),
+                                point ->
+                                    point
+                                        .hasValue(5.0)
+                                        .hasAttribute(
+                                            AttributeKey.stringKey("region"), "eu-west"))));
+
+    // The Prometheus collect() path also still works (dual-write).
+    assertThat(gauge.collect().getDataPoints()).hasSize(2);
+  }
+
+  @Test
+  void transparentGaugeSetAndInc() {
+    Gauge gauge =
+        Gauge.builder()
+            .name("temperature")
+            .help("Current temperature")
+            .register(registry);
+
+    gauge.set(20.0);
+    gauge.inc(3.0);
+    gauge.dec(1.0);
+
+    assertThat(reader.collectAllMetrics())
+        .satisfiesExactly(
+            metric ->
+                assertThat(metric)
+                    .hasName("temperature")
+                    .hasDoubleGaugeSatisfying(
+                        g -> g.hasPointsSatisfying(point -> point.hasValue(22.0))));
+
+    assertThat(gauge.get()).isEqualTo(22.0);
   }
 }
