@@ -104,7 +104,9 @@ public abstract class AggregatorHandle<T extends PointData> {
     throwUnsupportedIfNull(this.longReservoirFactory, UNSUPPORTED_LONG_MESSAGE)
         .offerLongMeasurement(value, attributes, context);
     doRecordLong(value);
-    valuesRecorded = true;
+    if (!valuesRecorded) {
+      valuesRecorded = true;
+    }
   }
 
   /**
@@ -119,7 +121,9 @@ public abstract class AggregatorHandle<T extends PointData> {
     throwUnsupportedIfNull(this.doubleReservoirFactory, UNSUPPORTED_DOUBLE_MESSAGE)
         .offerDoubleMeasurement(value, attributes, context);
     doRecordDouble(value);
-    valuesRecorded = true;
+    if (!valuesRecorded) {
+      valuesRecorded = true;
+    }
   }
 
   /**

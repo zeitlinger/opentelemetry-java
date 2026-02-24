@@ -20,29 +20,35 @@ import javax.annotation.Nullable;
  * DoubleHistogram}.
  *
  * <p>Count and sum are tracked locally so that {@code getCount()} and {@code getSum()} continue to
- * work for callers that read values directly (e.g. {@code collect()}).
+ * work for callers that read values directly (e.g. {@code collect()}). Local tracking is skipped
+ * when {@code dualWrite=false} since nobody reads the values.
  */
 final class OtelHistogramDataPoint implements DistributionDataPoint {
 
   private final DoubleHistogram otelHistogram;
   private final Attributes attributes;
   @Nullable private final PreBoundRecorder recorder;
-  private final LongAdder count = new LongAdder();
-  private final DoubleAdder sum = new DoubleAdder();
+  @Nullable private final LongAdder count;
+  @Nullable private final DoubleAdder sum;
 
   OtelHistogramDataPoint(
       DoubleHistogram otelHistogram,
       Attributes attributes,
-      @Nullable PreBoundRecorder recorder) {
+      @Nullable PreBoundRecorder recorder,
+      boolean trackLocally) {
     this.otelHistogram = otelHistogram;
     this.attributes = attributes;
     this.recorder = recorder;
+    this.count = trackLocally ? new LongAdder() : null;
+    this.sum = trackLocally ? new DoubleAdder() : null;
   }
 
   @Override
   public void observe(double value) {
-    count.increment();
-    sum.add(value);
+    if (count != null && sum != null) {
+      count.increment();
+      sum.add(value);
+    }
     if (recorder != null) {
       recorder.recordDouble(value);
     } else {
@@ -52,8 +58,10 @@ final class OtelHistogramDataPoint implements DistributionDataPoint {
 
   @Override
   public void observeWithExemplar(double value, Labels labels) {
-    count.increment();
-    sum.add(value);
+    if (count != null && sum != null) {
+      count.increment();
+      sum.add(value);
+    }
     if (recorder != null) {
       recorder.recordDoubleWithExemplar(
           value, labels.get(Exemplar.TRACE_ID), labels.get(Exemplar.SPAN_ID));
@@ -64,11 +72,11 @@ final class OtelHistogramDataPoint implements DistributionDataPoint {
 
   @Override
   public long getCount() {
-    return count.sum();
+    return count != null ? count.sum() : 0;
   }
 
   @Override
   public double getSum() {
-    return sum.sum();
+    return sum != null ? sum.sum() : 0;
   }
 }

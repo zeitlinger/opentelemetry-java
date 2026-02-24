@@ -25,6 +25,9 @@ public interface ExemplarReservoirFactory {
    */
   static ExemplarReservoirFactory filtered(
       ExemplarFilterInternal filter, ExemplarReservoirFactory original) {
+    if (filter instanceof AlwaysOffExemplarFilter) {
+      return noSamples();
+    }
     return new ExemplarReservoirFactory() {
       @Override
       public DoubleExemplarReservoir createDoubleExemplarReservoir() {

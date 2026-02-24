@@ -20,20 +20,26 @@ import javax.annotation.Nullable;
  *
  * <p>The value is also tracked locally via adders so that {@code get()} and {@code getLongValue()}
  * continue to work for callers that read the counter value directly (e.g. {@code collect()}).
+ * Local tracking is skipped when {@code dualWrite=false} since nobody reads the value.
  */
 final class OtelCounterDataPoint implements CounterDataPoint {
 
   private final DoubleCounter otelCounter;
   private final Attributes attributes;
   @Nullable private final PreBoundRecorder recorder;
-  private final LongAdder longValue = new LongAdder();
-  private final DoubleAdder doubleValue = new DoubleAdder();
+  @Nullable private final LongAdder longValue;
+  @Nullable private final DoubleAdder doubleValue;
 
   OtelCounterDataPoint(
-      DoubleCounter otelCounter, Attributes attributes, @Nullable PreBoundRecorder recorder) {
+      DoubleCounter otelCounter,
+      Attributes attributes,
+      @Nullable PreBoundRecorder recorder,
+      boolean trackLocally) {
     this.otelCounter = otelCounter;
     this.attributes = attributes;
     this.recorder = recorder;
+    this.longValue = trackLocally ? new LongAdder() : null;
+    this.doubleValue = trackLocally ? new DoubleAdder() : null;
   }
 
   @Override
@@ -42,7 +48,9 @@ final class OtelCounterDataPoint implements CounterDataPoint {
       throw new IllegalArgumentException(
           "Negative increment " + amount + " is illegal for Counter metrics.");
     }
-    longValue.add(amount);
+    if (longValue != null) {
+      longValue.add(amount);
+    }
     if (recorder != null) {
       recorder.recordDouble((double) amount);
     } else {
@@ -56,7 +64,9 @@ final class OtelCounterDataPoint implements CounterDataPoint {
       throw new IllegalArgumentException(
           "Negative increment " + amount + " is illegal for Counter metrics.");
     }
-    doubleValue.add(amount);
+    if (doubleValue != null) {
+      doubleValue.add(amount);
+    }
     if (recorder != null) {
       recorder.recordDouble(amount);
     } else {
@@ -70,7 +80,9 @@ final class OtelCounterDataPoint implements CounterDataPoint {
       throw new IllegalArgumentException(
           "Negative increment " + amount + " is illegal for Counter metrics.");
     }
-    longValue.add(amount);
+    if (longValue != null) {
+      longValue.add(amount);
+    }
     if (recorder != null) {
       recorder.recordDoubleWithExemplar(
           (double) amount, labels.get(Exemplar.TRACE_ID), labels.get(Exemplar.SPAN_ID));
@@ -85,7 +97,9 @@ final class OtelCounterDataPoint implements CounterDataPoint {
       throw new IllegalArgumentException(
           "Negative increment " + amount + " is illegal for Counter metrics.");
     }
-    doubleValue.add(amount);
+    if (doubleValue != null) {
+      doubleValue.add(amount);
+    }
     if (recorder != null) {
       recorder.recordDoubleWithExemplar(
           amount, labels.get(Exemplar.TRACE_ID), labels.get(Exemplar.SPAN_ID));
@@ -96,11 +110,17 @@ final class OtelCounterDataPoint implements CounterDataPoint {
 
   @Override
   public double get() {
+    if (longValue == null || doubleValue == null) {
+      return 0;
+    }
     return longValue.sum() + doubleValue.sum();
   }
 
   @Override
   public long getLongValue() {
+    if (longValue == null || doubleValue == null) {
+      return 0;
+    }
     return longValue.sum() + (long) doubleValue.sum();
   }
 }

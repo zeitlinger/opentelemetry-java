@@ -115,7 +115,8 @@ public final class OtelMetricBackend implements MetricBackend {
 
     Attributes attributes = buildAttributes(labelNames, labelValues);
     PreBoundRecorder recorder = PreBoundRecorder.bind(counter, attributes);
-    return new OtelCounterDataPoint(counter, attributes, recorder.isBound() ? recorder : null);
+    return new OtelCounterDataPoint(
+        counter, attributes, recorder.isBound() ? recorder : null, dualWrite);
   }
 
   @Override
@@ -158,7 +159,7 @@ public final class OtelMetricBackend implements MetricBackend {
     Attributes attributes = buildAttributes(labelNames, labelValues);
     PreBoundRecorder recorder = PreBoundRecorder.bind(histogram, attributes);
     return new OtelHistogramDataPoint(
-        histogram, attributes, recorder.isBound() ? recorder : null);
+        histogram, attributes, recorder.isBound() ? recorder : null, dualWrite);
   }
 
   /**
