@@ -10,12 +10,16 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.api.metrics.DoubleCounter;
 import io.opentelemetry.api.metrics.DoubleGauge;
+import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.metrics.MeterProvider;
 import io.prometheus.metrics.core.datapoints.CounterDataPoint;
+import io.prometheus.metrics.core.datapoints.DistributionDataPoint;
 import io.prometheus.metrics.core.datapoints.GaugeDataPoint;
 import io.prometheus.metrics.core.metrics.MetricBackend;
 import io.prometheus.metrics.model.snapshots.MetricMetadata;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -50,6 +54,9 @@ public final class OtelMetricBackend implements MetricBackend {
   private static final ConcurrentHashMap<String, DoubleGauge> gauges =
       new ConcurrentHashMap<>();
 
+  private static final ConcurrentHashMap<String, DoubleHistogram> histograms =
+      new ConcurrentHashMap<>();
+
   /**
    * Set the {@link MeterProvider} that backs all Prometheus metrics.
    *
@@ -65,6 +72,7 @@ public final class OtelMetricBackend implements MetricBackend {
     meterProvider = MeterProvider.noop();
     counters.clear();
     gauges.clear();
+    histograms.clear();
   }
 
   /** No-arg constructor used by {@code ServiceLoader}. */
@@ -102,6 +110,43 @@ public final class OtelMetricBackend implements MetricBackend {
 
     Attributes attributes = buildAttributes(labelNames, labelValues);
     return new OtelGaugeDataPoint(gauge, attributes);
+  }
+
+  @Override
+  public DistributionDataPoint createHistogramDataPoint(
+      MetricMetadata metadata,
+      String[] labelNames,
+      String[] labelValues,
+      double[] classicUpperBounds) {
+
+    String name = metadata.getPrometheusName();
+    DoubleHistogram histogram =
+        histograms.computeIfAbsent(
+            name,
+            n -> {
+              Meter meter = meterProvider.get(INSTRUMENTATION_SCOPE);
+              return meter
+                  .histogramBuilder(n)
+                  .setExplicitBucketBoundariesAdvice(toFiniteBoundaries(classicUpperBounds))
+                  .build();
+            });
+
+    Attributes attributes = buildAttributes(labelNames, labelValues);
+    return new OtelHistogramDataPoint(histogram, attributes);
+  }
+
+  /**
+   * Convert Prometheus classic upper bounds to OTel explicit bucket boundaries. Prometheus includes
+   * +Inf as the last bound; OTel does not.
+   */
+  private static List<Double> toFiniteBoundaries(double[] classicUpperBounds) {
+    List<Double> boundaries = new ArrayList<>(classicUpperBounds.length);
+    for (double bound : classicUpperBounds) {
+      if (!Double.isInfinite(bound)) {
+        boundaries.add(bound);
+      }
+    }
+    return boundaries;
   }
 
   private static Attributes buildAttributes(String[] labelNames, String[] labelValues) {

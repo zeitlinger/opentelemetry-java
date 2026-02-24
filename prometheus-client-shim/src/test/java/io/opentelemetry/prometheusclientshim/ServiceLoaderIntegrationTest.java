@@ -12,6 +12,7 @@ import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.prometheus.metrics.core.metrics.Counter;
 import io.prometheus.metrics.core.metrics.Gauge;
+import io.prometheus.metrics.core.metrics.Histogram;
 import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -175,5 +176,72 @@ class ServiceLoaderIntegrationTest {
                         g -> g.hasPointsSatisfying(point -> point.hasValue(22.0))));
 
     assertThat(gauge.get()).isEqualTo(22.0);
+  }
+
+  @Test
+  void transparentHistogramWithLabels() {
+    Histogram histogram =
+        Histogram.builder()
+            .name("http_request_duration_seconds")
+            .help("HTTP request duration in seconds")
+            .classicOnly()
+            .classicUpperBounds(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
+            .labelNames("method")
+            .register(registry);
+
+    histogram.labelValues("GET").observe(0.05);
+    histogram.labelValues("GET").observe(0.15);
+    histogram.labelValues("POST").observe(1.5);
+
+    assertThat(reader.collectAllMetrics())
+        .satisfiesExactly(
+            metric ->
+                assertThat(metric)
+                    .hasName("http_request_duration_seconds")
+                    .hasHistogramSatisfying(
+                        h ->
+                            h.hasPointsSatisfying(
+                                point ->
+                                    point
+                                        .hasSum(0.2)
+                                        .hasCount(2)
+                                        .hasAttribute(
+                                            AttributeKey.stringKey("method"), "GET"),
+                                point ->
+                                    point
+                                        .hasSum(1.5)
+                                        .hasCount(1)
+                                        .hasAttribute(
+                                            AttributeKey.stringKey("method"), "POST"))));
+
+    // The Prometheus collect() path also still works (dual-write).
+    assertThat(histogram.collect().getDataPoints()).hasSize(2);
+  }
+
+  @Test
+  void transparentHistogramWithoutLabels() {
+    Histogram histogram =
+        Histogram.builder()
+            .name("request_size_bytes")
+            .help("Request size")
+            .classicOnly()
+            .register(registry);
+
+    histogram.observe(100.0);
+    histogram.observe(200.0);
+    histogram.observe(300.0);
+
+    assertThat(reader.collectAllMetrics())
+        .satisfiesExactly(
+            metric ->
+                assertThat(metric)
+                    .hasName("request_size_bytes")
+                    .hasHistogramSatisfying(
+                        h ->
+                            h.hasPointsSatisfying(
+                                point -> point.hasSum(600.0).hasCount(3))));
+
+    assertThat(histogram.getCount()).isEqualTo(3);
+    assertThat(histogram.getSum()).isEqualTo(600.0);
   }
 }
