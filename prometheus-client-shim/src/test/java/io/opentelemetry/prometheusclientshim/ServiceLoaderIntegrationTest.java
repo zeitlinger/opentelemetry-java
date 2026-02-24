@@ -244,4 +244,35 @@ class ServiceLoaderIntegrationTest {
     assertThat(histogram.getCount()).isEqualTo(3);
     assertThat(histogram.getSum()).isEqualTo(600.0);
   }
+
+  @Test
+  void otelOnlyMode_counterWritesToOtelButNotPrometheus() {
+    // Re-configure with dual-write disabled.
+    OtelMetricBackend.resetForTest();
+    InMemoryMetricReader otelOnlyReader = InMemoryMetricReader.create();
+    SdkMeterProvider otelOnlyProvider =
+        SdkMeterProvider.builder().registerMetricReader(otelOnlyReader).build();
+    OtelMetricBackend.configure(otelOnlyProvider, false);
+
+    PrometheusRegistry otelOnlyRegistry = new PrometheusRegistry();
+    Counter counter =
+        Counter.builder()
+            .name("otel_only_counter_total")
+            .help("Counter with dual-write disabled")
+            .register(otelOnlyRegistry);
+
+    counter.inc(10);
+
+    // OTel side has the data.
+    assertThat(otelOnlyReader.collectAllMetrics())
+        .satisfiesExactly(
+            metric ->
+                assertThat(metric)
+                    .hasName("otel_only_counter_total")
+                    .hasDoubleSumSatisfying(
+                        sum -> sum.hasPointsSatisfying(point -> point.hasValue(10.0))));
+
+    // Prometheus side returns zero (native adders were not written).
+    assertThat(counter.get()).isEqualTo(0.0);
+  }
 }

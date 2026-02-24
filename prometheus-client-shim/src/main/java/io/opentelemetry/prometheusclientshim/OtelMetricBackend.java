@@ -47,6 +47,7 @@ public final class OtelMetricBackend implements MetricBackend {
   private static final String INSTRUMENTATION_SCOPE = "io.prometheus";
 
   private static volatile MeterProvider meterProvider = MeterProvider.noop();
+  private static volatile boolean dualWrite = true;
 
   private static final ConcurrentHashMap<String, DoubleCounter> counters =
       new ConcurrentHashMap<>();
@@ -64,12 +65,32 @@ public final class OtelMetricBackend implements MetricBackend {
    * created before this call will record into a no-op provider.
    */
   public static void configure(MeterProvider meterProvider) {
-    OtelMetricBackend.meterProvider = meterProvider;
+    configure(meterProvider, /* dualWrite= */ true);
   }
 
-  /** Reset to no-op and clear cached counters. Visible for testing. */
+  /**
+   * Set the {@link MeterProvider} and dual-write mode.
+   *
+   * @param meterProvider the OTel MeterProvider
+   * @param dualWrite if {@code true}, Prometheus native storage is written alongside the OTel
+   *     backend (keeps {@code /metrics} working). If {@code false}, only the OTel backend receives
+   *     writes, which improves performance but disables Prometheus-side {@code collect()}/{@code
+   *     get()}.
+   */
+  public static void configure(MeterProvider meterProvider, boolean dualWrite) {
+    OtelMetricBackend.meterProvider = meterProvider;
+    OtelMetricBackend.dualWrite = dualWrite;
+  }
+
+  @Override
+  public boolean isDualWriteEnabled() {
+    return dualWrite;
+  }
+
+  /** Reset to no-op and clear cached instruments. Visible for testing. */
   static void resetForTest() {
     meterProvider = MeterProvider.noop();
+    dualWrite = true;
     counters.clear();
     gauges.clear();
     histograms.clear();

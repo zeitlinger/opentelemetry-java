@@ -1,5 +1,6 @@
 plugins {
   id("otel.java-conventions")
+  id("otel.jmh-conventions")
 }
 
 description = "OpenTelemetry Prometheus Client Shim"
@@ -13,4 +14,8 @@ dependencies {
   implementation(project(":sdk:metrics"))
 
   testImplementation(project(":sdk:testing"))
+
+  jmh("io.prometheus:prometheus-metrics-core")
+  jmh(project(":sdk:metrics"))
+  jmh(project(":sdk:testing"))
 }
