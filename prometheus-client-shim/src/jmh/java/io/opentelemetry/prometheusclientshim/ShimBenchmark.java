@@ -5,7 +5,13 @@
 
 package io.opentelemetry.prometheusclientshim;
 
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.metrics.DoubleCounter;
+import io.opentelemetry.api.metrics.DoubleHistogram;
+import io.opentelemetry.sdk.metrics.ExemplarFilter;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
+import io.opentelemetry.sdk.metrics.SdkMeterProviderBuilder;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.prometheus.metrics.core.datapoints.CounterDataPoint;
 import io.prometheus.metrics.core.datapoints.DistributionDataPoint;
@@ -29,9 +35,16 @@ import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.annotations.Warmup;
 
 /**
- * Benchmarks comparing native Prometheus client performance against the OTel shim (with and without
- * dual-write). The shim modes automatically use the fast path (pre-resolved AggregatorHandle) when
- * available.
+ * Benchmarks comparing native Prometheus client performance against the OTel shim. Modes isolate
+ * individual cost components:
+ *
+ * <ul>
+ *   <li>NATIVE — Prometheus client only, no OTel
+ *   <li>SHIM_OTL_ONLY — shim with fast path + exemplar support (Context.current())
+ *   <li>SHIM_NO_EXEMPLARS — shim with fast path, exemplars off (isolates Context.current() cost)
+ *   <li>SHIM_DUAL_WRITE — shim with both OTel and native Prometheus writes
+ *   <li>RAW_OTEL — OTel SDK directly (no shim layer), measures SDK overhead baseline
+ * </ul>
  *
  * <p>Run with: {@code ./gradlew :prometheus-client-shim:jmh}
  */
@@ -45,23 +58,50 @@ public class ShimBenchmark {
   @State(Scope.Benchmark)
   public static class BenchmarkState {
 
-    @Param({"NATIVE", "SHIM_DUAL_WRITE", "SHIM_OTL_ONLY"})
+    @Param({"NATIVE", "SHIM_OTL_ONLY", "SHIM_NO_EXEMPLARS", "SHIM_DUAL_WRITE", "RAW_OTEL"})
     String mode;
 
     private SdkMeterProvider meterProvider;
     private CounterDataPoint counterDataPoint;
     private DistributionDataPoint histogramDataPoint;
 
+    // For RAW_OTEL mode
+    private DoubleCounter rawOtelCounter;
+    private DoubleHistogram rawOtelHistogram;
+    private Attributes rawOtelAttributes;
+
     @Setup(Level.Iteration)
     public void setup() {
       OtelMetricBackend.resetForTest();
 
+      if ("RAW_OTEL".equals(mode)) {
+        InMemoryMetricReader reader = InMemoryMetricReader.create();
+        meterProvider = SdkMeterProvider.builder().registerMetricReader(reader).build();
+        rawOtelCounter =
+            meterProvider
+                .get("benchmark")
+                .counterBuilder("benchmark_counter_total")
+                .ofDoubles()
+                .build();
+        rawOtelHistogram =
+            meterProvider.get("benchmark").histogramBuilder("benchmark_histogram").build();
+        rawOtelAttributes =
+            Attributes.of(
+                AttributeKey.stringKey("method"), "GET", AttributeKey.stringKey("status"), "200");
+        return;
+      }
+
       PrometheusRegistry registry = new PrometheusRegistry();
 
       if (!"NATIVE".equals(mode)) {
+        SdkMeterProviderBuilder builder = SdkMeterProvider.builder();
+
+        if ("SHIM_NO_EXEMPLARS".equals(mode)) {
+          builder.setExemplarFilter(ExemplarFilter.alwaysOff());
+        }
+
         InMemoryMetricReader reader = InMemoryMetricReader.create();
-        meterProvider =
-            SdkMeterProvider.builder().registerMetricReader(reader).build();
+        meterProvider = builder.registerMetricReader(reader).build();
         boolean dualWrite = "SHIM_DUAL_WRITE".equals(mode);
         OtelMetricBackend.configure(meterProvider, dualWrite);
       }
@@ -96,12 +136,20 @@ public class ShimBenchmark {
   @Benchmark
   @Threads(1)
   public void counterInc(BenchmarkState state) {
-    state.counterDataPoint.inc();
+    if ("RAW_OTEL".equals(state.mode)) {
+      state.rawOtelCounter.add(1.0, state.rawOtelAttributes);
+    } else {
+      state.counterDataPoint.inc();
+    }
   }
 
   @Benchmark
   @Threads(1)
   public void histogramObserve(BenchmarkState state) {
-    state.histogramDataPoint.observe(0.123);
+    if ("RAW_OTEL".equals(state.mode)) {
+      state.rawOtelHistogram.record(0.123, state.rawOtelAttributes);
+    } else {
+      state.histogramDataPoint.observe(0.123);
+    }
   }
 }
