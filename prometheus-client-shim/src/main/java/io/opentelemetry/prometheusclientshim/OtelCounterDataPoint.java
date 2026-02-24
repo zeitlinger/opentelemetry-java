@@ -9,6 +9,7 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleCounter;
 import io.opentelemetry.sdk.metrics.PreBoundRecorder;
 import io.prometheus.metrics.core.datapoints.CounterDataPoint;
+import io.prometheus.metrics.model.snapshots.Exemplar;
 import io.prometheus.metrics.model.snapshots.Labels;
 import java.util.concurrent.atomic.DoubleAdder;
 import java.util.concurrent.atomic.LongAdder;
@@ -65,12 +66,32 @@ final class OtelCounterDataPoint implements CounterDataPoint {
 
   @Override
   public void incWithExemplar(long amount, Labels labels) {
-    inc(amount);
+    if (amount < 0) {
+      throw new IllegalArgumentException(
+          "Negative increment " + amount + " is illegal for Counter metrics.");
+    }
+    longValue.add(amount);
+    if (recorder != null) {
+      recorder.recordDoubleWithExemplar(
+          (double) amount, labels.get(Exemplar.TRACE_ID), labels.get(Exemplar.SPAN_ID));
+    } else {
+      otelCounter.add((double) amount, attributes);
+    }
   }
 
   @Override
   public void incWithExemplar(double amount, Labels labels) {
-    inc(amount);
+    if (amount < 0) {
+      throw new IllegalArgumentException(
+          "Negative increment " + amount + " is illegal for Counter metrics.");
+    }
+    doubleValue.add(amount);
+    if (recorder != null) {
+      recorder.recordDoubleWithExemplar(
+          amount, labels.get(Exemplar.TRACE_ID), labels.get(Exemplar.SPAN_ID));
+    } else {
+      otelCounter.add(amount, attributes);
+    }
   }
 
   @Override

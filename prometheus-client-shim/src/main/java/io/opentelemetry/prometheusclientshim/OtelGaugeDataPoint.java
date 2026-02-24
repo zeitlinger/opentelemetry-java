@@ -9,6 +9,7 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleGauge;
 import io.opentelemetry.sdk.metrics.PreBoundRecorder;
 import io.prometheus.metrics.core.datapoints.GaugeDataPoint;
+import io.prometheus.metrics.model.snapshots.Exemplar;
 import io.prometheus.metrics.model.snapshots.Labels;
 import java.util.concurrent.atomic.AtomicLong;
 import javax.annotation.Nullable;
@@ -49,7 +50,16 @@ final class OtelGaugeDataPoint implements GaugeDataPoint {
 
   @Override
   public void incWithExemplar(double amount, Labels labels) {
-    inc(amount);
+    double newValue =
+        Double.longBitsToDouble(
+            value.updateAndGet(
+                l -> Double.doubleToRawLongBits(Double.longBitsToDouble(l) + amount)));
+    if (recorder != null) {
+      recorder.recordDoubleWithExemplar(
+          newValue, labels.get(Exemplar.TRACE_ID), labels.get(Exemplar.SPAN_ID));
+    } else {
+      otelGauge.set(newValue, attributes);
+    }
   }
 
   @Override
@@ -69,6 +79,12 @@ final class OtelGaugeDataPoint implements GaugeDataPoint {
 
   @Override
   public void setWithExemplar(double value, Labels labels) {
-    set(value);
+    this.value.set(Double.doubleToRawLongBits(value));
+    if (recorder != null) {
+      recorder.recordDoubleWithExemplar(
+          value, labels.get(Exemplar.TRACE_ID), labels.get(Exemplar.SPAN_ID));
+    } else {
+      otelGauge.set(value, attributes);
+    }
   }
 }

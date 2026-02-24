@@ -9,6 +9,10 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleCounter;
 import io.opentelemetry.api.metrics.DoubleGauge;
 import io.opentelemetry.api.metrics.DoubleHistogram;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.TraceFlags;
+import io.opentelemetry.api.trace.TraceState;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.metrics.internal.aggregator.AggregatorHandle;
 import io.opentelemetry.sdk.metrics.internal.state.WriteableMetricStorage;
@@ -16,8 +20,7 @@ import javax.annotation.Nullable;
 
 /**
  * Pre-resolves an {@link AggregatorHandle} for a fixed attribute set, allowing direct recording
- * that skips the per-call {@code ConcurrentHashMap} lookup, attribute processing, validation, and
- * {@code Context.current()}.
+ * that skips the per-call {@code ConcurrentHashMap} lookup, attribute processing, and validation.
  *
  * <p>This is an internal optimization for the Prometheus client shim, where attributes are fixed at
  * {@code labelValues()} time.
@@ -77,22 +80,43 @@ public final class PreBoundRecorder {
   }
 
   /**
-   * Record a double value directly into the pre-resolved handle. Skips CHM lookup, validation, and
-   * Context.current().
+   * Record a double value directly into the pre-resolved handle. Uses {@code Context.current()} to
+   * support auto-sampled exemplars (the OTel reservoir extracts trace context from the current
+   * span).
    */
   public void recordDouble(double value) {
     if (handle != null) {
-      handle.recordDouble(value, attributes, Context.root());
+      handle.recordDouble(value, attributes, Context.current());
     }
   }
 
   /**
-   * Record a long value directly into the pre-resolved handle. Skips CHM lookup, validation, and
-   * Context.current().
+   * Record a double value with explicit trace context for exemplars. Constructs a synthetic OTel
+   * {@link SpanContext} from the provided trace/span IDs, allowing the exemplar reservoir to pick
+   * them up.
+   */
+  public void recordDoubleWithExemplar(
+      double value, @Nullable String traceId, @Nullable String spanId) {
+    if (handle != null) {
+      Context context;
+      if (traceId != null && spanId != null) {
+        SpanContext spanContext =
+            SpanContext.create(traceId, spanId, TraceFlags.getSampled(), TraceState.getDefault());
+        context = Context.root().with(Span.wrap(spanContext));
+      } else {
+        context = Context.current();
+      }
+      handle.recordDouble(value, attributes, context);
+    }
+  }
+
+  /**
+   * Record a long value directly into the pre-resolved handle. Uses {@code Context.current()} to
+   * support auto-sampled exemplars.
    */
   public void recordLong(long value) {
     if (handle != null) {
-      handle.recordLong(value, attributes, Context.root());
+      handle.recordLong(value, attributes, Context.current());
     }
   }
 }

@@ -9,6 +9,7 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.sdk.metrics.PreBoundRecorder;
 import io.prometheus.metrics.core.datapoints.DistributionDataPoint;
+import io.prometheus.metrics.model.snapshots.Exemplar;
 import io.prometheus.metrics.model.snapshots.Labels;
 import java.util.concurrent.atomic.DoubleAdder;
 import java.util.concurrent.atomic.LongAdder;
@@ -51,7 +52,14 @@ final class OtelHistogramDataPoint implements DistributionDataPoint {
 
   @Override
   public void observeWithExemplar(double value, Labels labels) {
-    observe(value);
+    count.increment();
+    sum.add(value);
+    if (recorder != null) {
+      recorder.recordDoubleWithExemplar(
+          value, labels.get(Exemplar.TRACE_ID), labels.get(Exemplar.SPAN_ID));
+    } else {
+      otelHistogram.record(value, attributes);
+    }
   }
 
   @Override
