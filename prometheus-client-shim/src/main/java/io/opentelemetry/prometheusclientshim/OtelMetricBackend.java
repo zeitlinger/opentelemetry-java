@@ -13,6 +13,7 @@ import io.opentelemetry.api.metrics.DoubleGauge;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.metrics.MeterProvider;
+import io.opentelemetry.sdk.metrics.PreBoundRecorder;
 import io.prometheus.metrics.core.datapoints.CounterDataPoint;
 import io.prometheus.metrics.core.datapoints.DistributionDataPoint;
 import io.prometheus.metrics.core.datapoints.GaugeDataPoint;
@@ -113,7 +114,8 @@ public final class OtelMetricBackend implements MetricBackend {
             });
 
     Attributes attributes = buildAttributes(labelNames, labelValues);
-    return new OtelCounterDataPoint(counter, attributes);
+    PreBoundRecorder recorder = PreBoundRecorder.bind(counter, attributes);
+    return new OtelCounterDataPoint(counter, attributes, recorder.isBound() ? recorder : null);
   }
 
   @Override
@@ -130,7 +132,8 @@ public final class OtelMetricBackend implements MetricBackend {
             });
 
     Attributes attributes = buildAttributes(labelNames, labelValues);
-    return new OtelGaugeDataPoint(gauge, attributes);
+    PreBoundRecorder recorder = PreBoundRecorder.bind(gauge, attributes);
+    return new OtelGaugeDataPoint(gauge, attributes, recorder.isBound() ? recorder : null);
   }
 
   @Override
@@ -153,7 +156,9 @@ public final class OtelMetricBackend implements MetricBackend {
             });
 
     Attributes attributes = buildAttributes(labelNames, labelValues);
-    return new OtelHistogramDataPoint(histogram, attributes);
+    PreBoundRecorder recorder = PreBoundRecorder.bind(histogram, attributes);
+    return new OtelHistogramDataPoint(
+        histogram, attributes, recorder.isBound() ? recorder : null);
   }
 
   /**

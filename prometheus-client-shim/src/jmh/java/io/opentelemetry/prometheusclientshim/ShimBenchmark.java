@@ -30,7 +30,8 @@ import org.openjdk.jmh.annotations.Warmup;
 
 /**
  * Benchmarks comparing native Prometheus client performance against the OTel shim (with and without
- * dual-write).
+ * dual-write). The shim modes automatically use the fast path (pre-resolved AggregatorHandle) when
+ * available.
  *
  * <p>Run with: {@code ./gradlew :prometheus-client-shim:jmh}
  */

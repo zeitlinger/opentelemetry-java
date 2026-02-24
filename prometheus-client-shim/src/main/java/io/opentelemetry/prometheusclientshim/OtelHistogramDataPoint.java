@@ -7,10 +7,12 @@ package io.opentelemetry.prometheusclientshim;
 
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
+import io.opentelemetry.sdk.metrics.PreBoundRecorder;
 import io.prometheus.metrics.core.datapoints.DistributionDataPoint;
 import io.prometheus.metrics.model.snapshots.Labels;
 import java.util.concurrent.atomic.DoubleAdder;
 import java.util.concurrent.atomic.LongAdder;
+import javax.annotation.Nullable;
 
 /**
  * A {@link DistributionDataPoint} that delegates {@code observe()} to an OTel {@link
@@ -23,19 +25,28 @@ final class OtelHistogramDataPoint implements DistributionDataPoint {
 
   private final DoubleHistogram otelHistogram;
   private final Attributes attributes;
+  @Nullable private final PreBoundRecorder recorder;
   private final LongAdder count = new LongAdder();
   private final DoubleAdder sum = new DoubleAdder();
 
-  OtelHistogramDataPoint(DoubleHistogram otelHistogram, Attributes attributes) {
+  OtelHistogramDataPoint(
+      DoubleHistogram otelHistogram,
+      Attributes attributes,
+      @Nullable PreBoundRecorder recorder) {
     this.otelHistogram = otelHistogram;
     this.attributes = attributes;
+    this.recorder = recorder;
   }
 
   @Override
   public void observe(double value) {
     count.increment();
     sum.add(value);
-    otelHistogram.record(value, attributes);
+    if (recorder != null) {
+      recorder.recordDouble(value);
+    } else {
+      otelHistogram.record(value, attributes);
+    }
   }
 
   @Override

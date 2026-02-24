@@ -7,10 +7,12 @@ package io.opentelemetry.prometheusclientshim;
 
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleCounter;
+import io.opentelemetry.sdk.metrics.PreBoundRecorder;
 import io.prometheus.metrics.core.datapoints.CounterDataPoint;
 import io.prometheus.metrics.model.snapshots.Labels;
 import java.util.concurrent.atomic.DoubleAdder;
 import java.util.concurrent.atomic.LongAdder;
+import javax.annotation.Nullable;
 
 /**
  * A {@link CounterDataPoint} that delegates {@code inc()} to an OTel {@link DoubleCounter}.
@@ -22,12 +24,15 @@ final class OtelCounterDataPoint implements CounterDataPoint {
 
   private final DoubleCounter otelCounter;
   private final Attributes attributes;
+  @Nullable private final PreBoundRecorder recorder;
   private final LongAdder longValue = new LongAdder();
   private final DoubleAdder doubleValue = new DoubleAdder();
 
-  OtelCounterDataPoint(DoubleCounter otelCounter, Attributes attributes) {
+  OtelCounterDataPoint(
+      DoubleCounter otelCounter, Attributes attributes, @Nullable PreBoundRecorder recorder) {
     this.otelCounter = otelCounter;
     this.attributes = attributes;
+    this.recorder = recorder;
   }
 
   @Override
@@ -37,7 +42,11 @@ final class OtelCounterDataPoint implements CounterDataPoint {
           "Negative increment " + amount + " is illegal for Counter metrics.");
     }
     longValue.add(amount);
-    otelCounter.add((double) amount, attributes);
+    if (recorder != null) {
+      recorder.recordDouble((double) amount);
+    } else {
+      otelCounter.add((double) amount, attributes);
+    }
   }
 
   @Override
@@ -47,7 +56,11 @@ final class OtelCounterDataPoint implements CounterDataPoint {
           "Negative increment " + amount + " is illegal for Counter metrics.");
     }
     doubleValue.add(amount);
-    otelCounter.add(amount, attributes);
+    if (recorder != null) {
+      recorder.recordDouble(amount);
+    } else {
+      otelCounter.add(amount, attributes);
+    }
   }
 
   @Override

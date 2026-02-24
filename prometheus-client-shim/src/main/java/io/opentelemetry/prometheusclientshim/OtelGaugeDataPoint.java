@@ -7,9 +7,11 @@ package io.opentelemetry.prometheusclientshim;
 
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleGauge;
+import io.opentelemetry.sdk.metrics.PreBoundRecorder;
 import io.prometheus.metrics.core.datapoints.GaugeDataPoint;
 import io.prometheus.metrics.model.snapshots.Labels;
 import java.util.concurrent.atomic.AtomicLong;
+import javax.annotation.Nullable;
 
 /**
  * A {@link GaugeDataPoint} that delegates {@code set()} and {@code inc()} to an OTel {@link
@@ -22,11 +24,14 @@ final class OtelGaugeDataPoint implements GaugeDataPoint {
 
   private final DoubleGauge otelGauge;
   private final Attributes attributes;
+  @Nullable private final PreBoundRecorder recorder;
   private final AtomicLong value = new AtomicLong(Double.doubleToRawLongBits(0));
 
-  OtelGaugeDataPoint(DoubleGauge otelGauge, Attributes attributes) {
+  OtelGaugeDataPoint(
+      DoubleGauge otelGauge, Attributes attributes, @Nullable PreBoundRecorder recorder) {
     this.otelGauge = otelGauge;
     this.attributes = attributes;
+    this.recorder = recorder;
   }
 
   @Override
@@ -35,7 +40,11 @@ final class OtelGaugeDataPoint implements GaugeDataPoint {
         Double.longBitsToDouble(
             value.updateAndGet(
                 l -> Double.doubleToRawLongBits(Double.longBitsToDouble(l) + amount)));
-    otelGauge.set(newValue, attributes);
+    if (recorder != null) {
+      recorder.recordDouble(newValue);
+    } else {
+      otelGauge.set(newValue, attributes);
+    }
   }
 
   @Override
@@ -46,7 +55,11 @@ final class OtelGaugeDataPoint implements GaugeDataPoint {
   @Override
   public void set(double value) {
     this.value.set(Double.doubleToRawLongBits(value));
-    otelGauge.set(value, attributes);
+    if (recorder != null) {
+      recorder.recordDouble(value);
+    } else {
+      otelGauge.set(value, attributes);
+    }
   }
 
   @Override

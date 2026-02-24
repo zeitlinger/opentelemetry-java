@@ -176,6 +176,10 @@ public abstract class DefaultSynchronousMetricStorage<T extends PointData>
     return metricDescriptor;
   }
 
+  @Override
+  @Nullable
+  public abstract AggregatorHandle<T> resolveHandle(Attributes attributes);
+
   private static class DeltaSynchronousMetricStorage<T extends PointData>
       extends DefaultSynchronousMetricStorage<T> {
     private final RegisteredReader registeredReader;
@@ -222,6 +226,13 @@ public abstract class DefaultSynchronousMetricStorage<T extends PointData>
       } finally {
         releaseHolderForRecord(holderForRecord);
       }
+    }
+
+    @Nullable
+    @Override
+    public AggregatorHandle<T> resolveHandle(Attributes attributes) {
+      // Delta handles are not stable (swapped on each collection), so pre-resolution is not safe.
+      return null;
     }
 
     @Nullable
@@ -419,6 +430,11 @@ public abstract class DefaultSynchronousMetricStorage<T extends PointData>
     void doRecordDouble(double value, Attributes attributes, Context context) {
       getAggregatorHandle(aggregatorHandles, attributes, context)
           .recordDouble(value, attributes, context);
+    }
+
+    @Override
+    public AggregatorHandle<T> resolveHandle(Attributes attributes) {
+      return getAggregatorHandle(aggregatorHandles, attributes, Context.root());
     }
 
     @Nullable
