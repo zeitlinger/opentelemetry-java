@@ -127,6 +127,18 @@ public abstract class AggregatorHandle<T extends PointData> {
   }
 
   /**
+   * Records a double value without exemplar sampling. Skips {@code Context.current()} and the
+   * exemplar reservoir entirely — intended for pre-bound recording paths (e.g. the Prometheus shim)
+   * where the caller uses a separate method for exemplar-bearing recordings.
+   */
+  public final void recordDoubleSkipExemplars(double value) {
+    doRecordDouble(value);
+    if (!valuesRecorded) {
+      valuesRecorded = true;
+    }
+  }
+
+  /**
    * Concrete Aggregator instances should implement this method in order support recordings of
    * double values.
    */

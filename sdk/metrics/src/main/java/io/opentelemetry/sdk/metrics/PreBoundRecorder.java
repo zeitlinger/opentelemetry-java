@@ -91,6 +91,17 @@ public final class PreBoundRecorder {
   }
 
   /**
+   * Record a double value without exemplar sampling. Skips {@code Context.current()} and the
+   * exemplar reservoir entirely. Use {@link #recordDouble(double)} or {@link
+   * #recordDoubleWithExemplar(double, String, String)} when exemplar support is needed.
+   */
+  public void recordDoubleSkipExemplars(double value) {
+    if (handle != null) {
+      handle.recordDoubleSkipExemplars(value);
+    }
+  }
+
+  /**
    * Record a double value with explicit trace context for exemplars. Constructs a synthetic OTel
    * {@link SpanContext} from the provided trace/span IDs, allowing the exemplar reservoir to pick
    * them up.

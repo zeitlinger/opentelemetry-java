@@ -52,7 +52,7 @@ final class OtelCounterDataPoint implements CounterDataPoint {
       longValue.add(amount);
     }
     if (recorder != null) {
-      recorder.recordDouble((double) amount);
+      recorder.recordDoubleSkipExemplars((double) amount);
     } else {
       otelCounter.add((double) amount, attributes);
     }
@@ -68,7 +68,7 @@ final class OtelCounterDataPoint implements CounterDataPoint {
       doubleValue.add(amount);
     }
     if (recorder != null) {
-      recorder.recordDouble(amount);
+      recorder.recordDoubleSkipExemplars(amount);
     } else {
       otelCounter.add(amount, attributes);
     }

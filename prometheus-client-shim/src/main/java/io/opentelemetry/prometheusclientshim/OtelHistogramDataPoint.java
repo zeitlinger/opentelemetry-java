@@ -50,7 +50,7 @@ final class OtelHistogramDataPoint implements DistributionDataPoint {
       sum.add(value);
     }
     if (recorder != null) {
-      recorder.recordDouble(value);
+      recorder.recordDoubleSkipExemplars(value);
     } else {
       otelHistogram.record(value, attributes);
     }
