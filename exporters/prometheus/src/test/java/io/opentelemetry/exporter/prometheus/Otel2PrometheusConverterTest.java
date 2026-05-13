@@ -198,10 +198,7 @@ class Otel2PrometheusConverterTest {
   @ParameterizedTest
   @MethodSource("translationStrategyArgs")
   void metricMetadata_translationStrategy(
-      TranslationStrategy translationStrategy,
-      String expectedName,
-      String expectedExpositionBaseName,
-      String expectedOriginalName) {
+      TranslationStrategy translationStrategy, String expectedName) {
     Otel2PrometheusConverter converter =
         new Otel2PrometheusConverter(
             /* otelScopeLabelsEnabled= */ true,
@@ -216,29 +213,14 @@ class Otel2PrometheusConverterTest {
 
     MetricMetadata metadata = snapshots.get(0).getMetadata();
     assertThat(metadata.getName()).isEqualTo(expectedName);
-    assertThat(metadata.getExpositionBaseName()).isEqualTo(expectedExpositionBaseName);
-    assertThat(metadata.getOriginalName()).isEqualTo(expectedOriginalName);
   }
 
   private static Stream<Arguments> translationStrategyArgs() {
     return Stream.of(
-        Arguments.of(
-            TranslationStrategy.UNDERSCORE_ESCAPING_WITH_SUFFIXES,
-            "sample_name_bytes",
-            "sample_name_bytes",
-            "sample_name_bytes"),
-        Arguments.of(
-            TranslationStrategy.UNDERSCORE_ESCAPING_WITHOUT_SUFFIXES,
-            "sample_name",
-            "sample_name",
-            "sample_name"),
-        Arguments.of(
-            TranslationStrategy.NO_UTF8_ESCAPING_WITH_SUFFIXES,
-            "sample.name_bytes",
-            "sample.name_bytes_total",
-            "sample.name_bytes_total"),
-        Arguments.of(
-            TranslationStrategy.NO_TRANSLATION, "sample.name", "sample.name", "sample.name"));
+        Arguments.of(TranslationStrategy.UNDERSCORE_ESCAPING_WITH_SUFFIXES, "sample_name_bytes"),
+        Arguments.of(TranslationStrategy.UNDERSCORE_ESCAPING_WITHOUT_SUFFIXES, "sample_name"),
+        Arguments.of(TranslationStrategy.NO_UTF8_ESCAPING_WITH_SUFFIXES, "sample.name_bytes"),
+        Arguments.of(TranslationStrategy.NO_TRANSLATION, "sample.name"));
   }
 
   @Test

@@ -42,6 +42,7 @@ import io.prometheus.metrics.model.snapshots.HistogramSnapshot.HistogramDataPoin
 import io.prometheus.metrics.model.snapshots.InfoSnapshot;
 import io.prometheus.metrics.model.snapshots.InfoSnapshot.InfoDataPointSnapshot;
 import io.prometheus.metrics.model.snapshots.Labels;
+import io.prometheus.metrics.model.snapshots.MetricFamilyDescriptor;
 import io.prometheus.metrics.model.snapshots.MetricMetadata;
 import io.prometheus.metrics.model.snapshots.MetricSnapshot;
 import io.prometheus.metrics.model.snapshots.MetricSnapshots;
@@ -51,6 +52,7 @@ import io.prometheus.metrics.model.snapshots.Quantiles;
 import io.prometheus.metrics.model.snapshots.SummarySnapshot;
 import io.prometheus.metrics.model.snapshots.SummarySnapshot.SummaryDataPointSnapshot;
 import io.prometheus.metrics.model.snapshots.Unit;
+import io.prometheus.metrics.model.registry.MetricType;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -470,7 +472,7 @@ final class Otel2PrometheusConverter {
 
   private InfoSnapshot makeTargetInfo(Resource resource) {
     return new InfoSnapshot(
-        new MetricMetadata("target"),
+        MetricFamilyDescriptor.info("target").build().getMetadata(),
         Collections.singletonList(
             new InfoDataPointSnapshot(
                 convertAttributes(
@@ -679,20 +681,22 @@ final class Otel2PrometheusConverter {
   }
 
   private MetricMetadata convertMetadata(MetricData metricData, boolean isCounter) {
+    MetricType metricType = getMetricType(metricData, isCounter);
     switch (translationStrategy) {
       case UNDERSCORE_ESCAPING_WITH_SUFFIXES:
-        return convertMetadataEscapedWithSuffixes(metricData);
+        return convertMetadataEscapedWithSuffixes(metricData, metricType);
       case UNDERSCORE_ESCAPING_WITHOUT_SUFFIXES:
         return convertMetadataEscapedWithoutSuffixes(metricData);
       case NO_UTF8_ESCAPING_WITH_SUFFIXES:
-        return convertMetadataUtf8WithSuffixes(metricData, isCounter);
+        return convertMetadataUtf8WithSuffixes(metricData, metricType);
       case NO_TRANSLATION:
         return convertMetadataNoTranslation(metricData);
     }
     throw new IllegalStateException("Unknown strategy: " + translationStrategy);
   }
 
-  private static MetricMetadata convertMetadataEscapedWithSuffixes(MetricData metricData) {
+  private static MetricMetadata convertMetadataEscapedWithSuffixes(
+      MetricData metricData, MetricType metricType) {
     String originalName = metricData.getName();
     String name = stripReservedMetricSuffixes(convertLegacyMetricName(originalName));
     String help = metricData.getDescription();
@@ -701,7 +705,7 @@ final class Otel2PrometheusConverter {
       name = name + "_" + unit;
     }
     validateNormalizedMetricName(originalName, name);
-    return new MetricMetadata(name, name, name, help, unit);
+    return buildMetricFamilyDescriptor(metricType, name, help, unit).getMetadata();
   }
 
   private static MetricMetadata convertMetadataEscapedWithoutSuffixes(MetricData metricData) {
@@ -713,18 +717,14 @@ final class Otel2PrometheusConverter {
   }
 
   private static MetricMetadata convertMetadataUtf8WithSuffixes(
-      MetricData metricData, boolean isCounter) {
+      MetricData metricData, MetricType metricType) {
     String name = metricData.getName();
     String help = metricData.getDescription();
     Unit unit = PrometheusUnitsHelper.convertUnit(metricData.getUnit());
     if (unit != null && !name.endsWith(unit.toString())) {
       name = name + "_" + unit;
     }
-    String expositionBaseName = name;
-    if (isCounter && !expositionBaseName.endsWith("_total")) {
-      expositionBaseName = expositionBaseName + "_total";
-    }
-    return new MetricMetadata(stripReservedMetricSuffixes(name), expositionBaseName, help, unit);
+    return buildMetricFamilyDescriptor(metricType, name, help, unit).getMetadata();
   }
 
   private static MetricMetadata convertMetadataNoTranslation(MetricData metricData) {
@@ -860,6 +860,33 @@ final class Otel2PrometheusConverter {
       return null;
     }
     return new MetricMetadata(name, help, unit);
+  }
+
+  private static MetricType getMetricType(MetricData metricData, boolean isCounter) {
+    switch (metricData.getType()) {
+      case LONG_GAUGE:
+      case DOUBLE_GAUGE:
+        return MetricType.GAUGE;
+      case LONG_SUM:
+      case DOUBLE_SUM:
+        return isCounter ? MetricType.COUNTER : MetricType.GAUGE;
+      case HISTOGRAM:
+      case EXPONENTIAL_HISTOGRAM:
+        return MetricType.HISTOGRAM;
+      case SUMMARY:
+        return MetricType.SUMMARY;
+    }
+    throw new IllegalStateException("Unknown metric type: " + metricData.getType());
+  }
+
+  private static MetricFamilyDescriptor buildMetricFamilyDescriptor(
+      MetricType metricType, String name, @Nullable String help, @Nullable Unit unit) {
+    MetricFamilyDescriptor.Builder<?> builder =
+        MetricFamilyDescriptor.of(metricType, name).help(help);
+    if (unit != null) {
+      builder.unit(unit);
+    }
+    return builder.build();
   }
 
   private static String typeString(MetricSnapshot snapshot) {
